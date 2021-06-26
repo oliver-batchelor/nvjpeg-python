@@ -135,6 +135,8 @@ JpegCoderBytes* JpegCoderX86::encode(JpegCoderImage* img, int quality){
     JpegCoderBytes* jpegData = new JpegCoderBytes(length);
     nvjpegEncodeRetrieveBitstream(nv_handle, nv_enc_state, jpegData->data, &(jpegData->size), stream);
 
+    cudaStreamSynchronize(context.stream);
+
     nvjpegEncoderParamsDestroy(nv_enc_params);
     return jpegData;
 }
