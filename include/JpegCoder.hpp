@@ -40,7 +40,7 @@ typedef enum{
     JPEGCODER_PIXFMT_BGRI        = 6,
 }JpegCoderColorFormat;
 
-class JpegCoderImage{
+class JpegCoderImage {
 public:
     void* img;
     JpegCoderChromaSubsampling subsampling;
@@ -53,6 +53,8 @@ public:
     void fill(const unsigned char* data);
     unsigned char* buffer();
 };
+
+
 
 class JpegCoderBytes{
 public:
@@ -76,14 +78,13 @@ public:
 };
 
 class JpegCoder{
-protected:
-    static void* _global_context;
-    void* _local_context;
 public:
-    JpegCoder();
-    ~JpegCoder();
-    void ensureThread(long threadIdent);
-    JpegCoderImage* decode(const unsigned char* jpegData, size_t length);
-    JpegCoderBytes* encode(JpegCoderImage* img, int quality);
-    static void cleanUpEnv();
+    JpegCoder() {}
+    virtual  ~JpegCoder() {}
+
+    static JpegCoder *create();
+
+    virtual void ensureThread(long threadIdent) = 0;
+    virtual JpegCoderImage* decode(const unsigned char* jpegData, size_t length) = 0;
+    virtual JpegCoderBytes* encode(JpegCoderImage* img, int quality) = 0;
 };

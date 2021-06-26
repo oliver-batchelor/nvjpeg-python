@@ -1,19 +1,34 @@
 #include <JpegCoder.hpp>
 #include <nvjpeg.h>
 
-void* JpegCoder::_global_context = nullptr;
-
 typedef struct
 {
-    nvjpegHandle_t nv_handle;
-    nvjpegJpegState_t nv_statue;
-    nvjpegEncoderState_t nv_enc_state;
-}NvJpegGlobalContext;
+  nvjpegHandle_t nv_handle;
+  nvjpegJpegState_t nv_statue;
+  nvjpegEncoderState_t nv_enc_state;
+  cudaStream_t stream;
+} NvJpegContext;
 
-#define JPEGCODER_GLOBAL_CONTEXT ((NvJpegGlobalContext*)(JpegCoder::_global_context))
 #define ChromaSubsampling_Covert_JpegCoderToNvJpeg(subsampling) ((nvjpegChromaSubsampling_t)(subsampling))
 #define ChromaSubsampling_Covert_NvJpegToJpegCoder(subsampling) ((JpegCoderChromaSubsampling)(subsampling))
 
+class JpegCoderX86 : public JpegCoder {
+  public:
+  JpegCoderX86();
+  ~JpegCoderX86();
+  
+  void ensureThread(long threadIdent);
+  JpegCoderImage* decode(const unsigned char* jpegData, size_t length);
+  JpegCoderBytes* encode(JpegCoderImage* img, int quality);
+
+  private:
+  NvJpegContext context;
+};
+
+
+JpegCoder *JpegCoder::create() {
+  return new JpegCoderX86();
+}
 
 JpegCoderImage::JpegCoderImage(size_t width, size_t height, short nChannel, JpegCoderChromaSubsampling subsampling){
     unsigned char * pBuffer = nullptr; 
@@ -58,36 +73,28 @@ JpegCoderImage::~JpegCoderImage(){
     this->img = nullptr;
 }
 
-JpegCoder::JpegCoder(){
-    if(JpegCoder::_global_context == nullptr){
-        JpegCoder::_global_context = malloc(sizeof(NvJpegGlobalContext));
-        nvjpegCreateSimple(&(JPEGCODER_GLOBAL_CONTEXT->nv_handle));
-        nvjpegJpegStateCreate(JPEGCODER_GLOBAL_CONTEXT->nv_handle, &(JPEGCODER_GLOBAL_CONTEXT->nv_statue));
-        nvjpegEncoderStateCreate(JPEGCODER_GLOBAL_CONTEXT->nv_handle, &(JPEGCODER_GLOBAL_CONTEXT->nv_enc_state), NULL);
-    }
+JpegCoderX86::JpegCoderX86() : JpegCoder(){
+    nvjpegCreateSimple(&(context.nv_handle));
+    nvjpegJpegStateCreate(context.nv_handle, &(context.nv_statue));
+    nvjpegEncoderStateCreate(context.nv_handle, &(context.nv_enc_state), NULL);
+    cudaStreamCreate(&(context.stream));
 }
 
-JpegCoder::~JpegCoder(){
-
+JpegCoderX86::~JpegCoderX86(){
+    nvjpegJpegStateDestroy(context.nv_statue);
+    nvjpegEncoderStateDestroy(context.nv_enc_state);
+    nvjpegDestroy(context.nv_handle);
+    
+    cudaStreamDestroy(context.stream);
 }
 
-void JpegCoder::cleanUpEnv(){
-    if(JpegCoder::_global_context != nullptr) {
-      nvjpegJpegStateDestroy(JPEGCODER_GLOBAL_CONTEXT->nv_statue);
-      nvjpegEncoderStateDestroy(JPEGCODER_GLOBAL_CONTEXT->nv_enc_state);
-      nvjpegDestroy(JPEGCODER_GLOBAL_CONTEXT->nv_handle);
-      free(JpegCoder::_global_context);
-      JpegCoder::_global_context = nullptr;
-    }
-}
-
-void JpegCoder::ensureThread(long threadIdent){
+void JpegCoderX86::ensureThread(long threadIdent){
     ;
 }
 
-JpegCoderImage* JpegCoder::decode(const unsigned char* jpegData, size_t length){
-    nvjpegHandle_t nv_handle = JPEGCODER_GLOBAL_CONTEXT->nv_handle;
-    nvjpegJpegState_t nv_statue = JPEGCODER_GLOBAL_CONTEXT->nv_statue;
+JpegCoderImage* JpegCoderX86::decode(const unsigned char* jpegData, size_t length){
+    nvjpegHandle_t nv_handle = context.nv_handle;
+    nvjpegJpegState_t nv_statue = context.nv_statue;
 
     int widths[NVJPEG_MAX_COMPONENT];
     int heights[NVJPEG_MAX_COMPONENT];
@@ -105,10 +112,11 @@ JpegCoderImage* JpegCoder::decode(const unsigned char* jpegData, size_t length){
     return imgdesc;
 }
 
-JpegCoderBytes* JpegCoder::encode(JpegCoderImage* img, int quality){
-    nvjpegHandle_t nv_handle = JPEGCODER_GLOBAL_CONTEXT->nv_handle;
-    nvjpegEncoderState_t nv_enc_state = JPEGCODER_GLOBAL_CONTEXT->nv_enc_state;
+JpegCoderBytes* JpegCoderX86::encode(JpegCoderImage* img, int quality){
+    nvjpegHandle_t nv_handle = context.nv_handle;
+    nvjpegEncoderState_t nv_enc_state = context.nv_enc_state;
     nvjpegEncoderParams_t nv_enc_params;
+    cudaStream_t stream = context.stream;
 
     nvjpegEncoderParamsCreate(nv_handle, &nv_enc_params, NULL);
 
@@ -116,16 +124,16 @@ JpegCoderBytes* JpegCoder::encode(JpegCoderImage* img, int quality){
     nvjpegEncoderParamsSetOptimizedHuffman(nv_enc_params, 1, NULL);
     nvjpegEncoderParamsSetSamplingFactors(nv_enc_params, ChromaSubsampling_Covert_JpegCoderToNvJpeg(img->subsampling), NULL);
 
-    int nReturnCode = nvjpegEncodeImage(nv_handle, nv_enc_state, nv_enc_params, (nvjpegImage_t*)(img->img), NVJPEG_INPUT_BGRI, (int)img->width, (int)img->height, NULL);
+    int nReturnCode = nvjpegEncodeImage(nv_handle, nv_enc_state, nv_enc_params, (nvjpegImage_t*)(img->img), NVJPEG_INPUT_BGRI, (int)img->width, (int)img->height, stream);
     if (NVJPEG_STATUS_SUCCESS != nReturnCode){
         throw JpegCoderError(nReturnCode, "NvJpeg Encoder Error");
     }
     
     size_t length;
-    nvjpegEncodeRetrieveBitstream(nv_handle, nv_enc_state, NULL, &length, NULL);
+    nvjpegEncodeRetrieveBitstream(nv_handle, nv_enc_state, NULL, &length, stream);
     
     JpegCoderBytes* jpegData = new JpegCoderBytes(length);
-    nvjpegEncodeRetrieveBitstream(nv_handle, nv_enc_state, jpegData->data, &(jpegData->size), NULL);
+    nvjpegEncodeRetrieveBitstream(nv_handle, nv_enc_state, jpegData->data, &(jpegData->size), stream);
 
     nvjpegEncoderParamsDestroy(nv_enc_params);
     return jpegData;

@@ -56,9 +56,9 @@ JpegCoderImage::~JpegCoderImage(){
 JpegCoder::JpegCoder(){
     if(JpegCoder::_global_context == nullptr){
         JpegCoder::_global_context = malloc(sizeof(NvJpegGlobalContext));
-        JPEGCODER_GLOBAL_CONTEXT->cudaContextMap = new std::map<long, CUcontext*>();
-        JPEGCODER_GLOBAL_CONTEXT->nv_decoder = NvJPEGDecoder::createJPEGDecoder("nvjpeg-python:decoder");
-        JPEGCODER_GLOBAL_CONTEXT->nv_encoder = NvJPEGEncoder::createJPEGEncoder("nvjpeg-python:encoder");
+        context.cudaContextMap = new std::map<long, CUcontext*>();
+        context.nv_decoder = NvJPEGDecoder::createJPEGDecoder("nvjpeg-python:decoder");
+        context.nv_encoder = NvJPEGEncoder::createJPEGEncoder("nvjpeg-python:encoder");
     }
 }
 
@@ -70,13 +70,13 @@ JpegCoder::~JpegCoder(){
 
 void JpegCoder::cleanUpEnv(){
     if(JpegCoder::_global_context != nullptr) {
-      delete(JPEGCODER_GLOBAL_CONTEXT->nv_decoder);
-      delete(JPEGCODER_GLOBAL_CONTEXT->nv_encoder);
-      for(auto cudaContext: *(JPEGCODER_GLOBAL_CONTEXT->cudaContextMap)){
+      delete(context.nv_decoder);
+      delete(context.nv_encoder);
+      for(auto cudaContext: *(context.cudaContextMap)){
          ArgusSamples::cleanupCUDA(cudaContext.second);
       }
-      delete(JPEGCODER_GLOBAL_CONTEXT->cudaContextMap);
-    //   ArgusSamples::cleanupCUDA(&(JPEGCODER_GLOBAL_CONTEXT->g_cudaContext));
+      delete(context.cudaContextMap);
+    //   ArgusSamples::cleanupCUDA(&(context.g_cudaContext));
       free(JpegCoder::_global_context);
       JpegCoder::_global_context = nullptr;
     }
@@ -84,15 +84,15 @@ void JpegCoder::cleanUpEnv(){
 
 void JpegCoder::ensureThread(long threadIdent){
     // printf("threadIdent Id: %ld\n", threadIdent);
-    if(JPEGCODER_GLOBAL_CONTEXT->cudaContextMap->count(threadIdent) == 0){
+    if(context.cudaContextMap->count(threadIdent) == 0){
         CUcontext* context = (CUcontext*)malloc(sizeof(CUcontext));
         ArgusSamples::initCUDA(context);
-        (*JPEGCODER_GLOBAL_CONTEXT->cudaContextMap)[threadIdent] = context;
+        (*context.cudaContextMap)[threadIdent] = context;
     }
 }
 
 JpegCoderImage* JpegCoder::decode(const unsigned char* jpegData, size_t length){
-    NvJPEGDecoder* nv_decoder = JPEGCODER_GLOBAL_CONTEXT->nv_decoder;
+    NvJPEGDecoder* nv_decoder = context.nv_decoder;
 
     uint32_t pixfmt, width, height;
     NvBuffer* buffer;
@@ -159,7 +159,7 @@ JpegCoderImage* JpegCoder::decode(const unsigned char* jpegData, size_t length){
 }
 
 JpegCoderBytes* JpegCoder::encode(JpegCoderImage* img, int quality){
-    NvJPEGEncoder *nv_encodere = JPEGCODER_GLOBAL_CONTEXT->nv_encoder;
+    NvJPEGEncoder *nv_encodere = context.nv_encoder;
 
     NvBuffer buffer(V4L2_PIX_FMT_YUV420M, img->width, img->height, 0);
     buffer.allocateMemory();

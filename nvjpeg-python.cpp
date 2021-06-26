@@ -24,7 +24,7 @@ static PyMemberDef NvJpeg_DataMembers[] =
 };
 
 int NvJpeg_init(PyObject *self, PyObject *args, PyObject *kwds) {
-  ((NvJpeg*)self)->m_handle = new JpegCoder();
+  ((NvJpeg*)self)->m_handle = JpegCoder::create();
   return 0;
 }
 
@@ -63,7 +63,7 @@ static PyObject* NvJpeg_decode(NvJpeg* Self, PyObject* Argvs)
         m_handle->ensureThread(PyThread_get_thread_ident());
         img = m_handle->decode((const unsigned char*)jpegData, len);
         PyBuffer_Release(&pyBuf);
-    }catch(JpegCoderError e){
+    }catch(JpegCoderError& e){
         PyBuffer_Release(&pyBuf);
         PyErr_Format(PyExc_ValueError, "%s, Code: %d", e.what(), e.code());
         return NULL;
@@ -102,23 +102,16 @@ static PyObject* NvJpeg_encode(NvJpeg* Self, PyObject* Argvs)
         quality = 100;
     }
 
-    JpegCoder* m_handle = (JpegCoder*)Self->m_handle;
-
-    PyObject* bytes = PyObject_CallMethod((PyObject*)vecin, "tobytes", NULL);
-
-    Py_buffer pyBuf;
-
-    unsigned char* buffer;
-    PyArg_Parse(bytes, "y*", &pyBuf);
-    buffer = (unsigned char*)pyBuf.buf;
+    const unsigned char *buffer = (const unsigned char*)PyArray_DATA(vecin);
     auto img = new JpegCoderImage(PyArray_DIM(vecin, 1), PyArray_DIM(vecin, 0), 3, JPEGCODER_CSS_444);
     img->fill(buffer);
-    PyBuffer_Release(&pyBuf);
-    Py_DECREF(bytes);
-
+    
+    JpegCoder* m_handle = (JpegCoder*)Self->m_handle;
     m_handle->ensureThread(PyThread_get_thread_ident());
     auto data = m_handle->encode(img, quality);
 
+    // npy_intp dims[1] = {npy_intp(data->size)};
+    // PyObject* rtn = PyArray_SimpleNewFromData(1, dims, NPY_UINT8, (void*)data->data);
     PyObject* rtn = PyBytes_FromStringAndSize((const char*)data->data, data->size);
 
     delete(data);
@@ -242,9 +235,7 @@ static PyTypeObject NvJpeg_ClassInfo =
         0
 };
 
-
 void NvJpeg_module_destroy(void *_){
-    JpegCoder::cleanUpEnv();
 }
 
 static PyModuleDef ModuleInfo =
