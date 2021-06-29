@@ -101,22 +101,19 @@ static PyObject* NvJpeg_encode(NvJpeg* Self, PyObject* Argvs)
     if(quality>100){
         quality = 100;
     }
+    JpegCoder* m_handle = (JpegCoder*)Self->m_handle;
 
     const unsigned char *buffer = (const unsigned char*)PyArray_DATA(vecin);
-    auto img = new JpegCoderImage(PyArray_DIM(vecin, 1), PyArray_DIM(vecin, 0), 3, JPEGCODER_CSS_444);
+    auto img = m_handle->createImage(PyArray_DIM(vecin, 1), PyArray_DIM(vecin, 0), 3, JPEGCODER_CSS_444);
     img->fill(buffer);
     
-    JpegCoder* m_handle = (JpegCoder*)Self->m_handle;
     m_handle->ensureThread(PyThread_get_thread_ident());
     auto data = m_handle->encode(img, quality);
 
-    // npy_intp dims[1] = {npy_intp(data->size)};
-    // PyObject* rtn = PyArray_SimpleNewFromData(1, dims, NPY_UINT8, (void*)data->data);
     PyObject* rtn = PyBytes_FromStringAndSize((const char*)data->data, data->size);
-
     delete(data);
     delete(img);
-    
+
     return rtn;
 }
 
