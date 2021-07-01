@@ -71,7 +71,7 @@ static PyObject* NvJpeg_decode(NvJpeg* Self, PyObject* Argvs)
 
     unsigned char* data = img->buffer();
 
-    npy_intp dims[3] = {(npy_intp)(img->height), (npy_intp)(img->width), 3};
+    npy_intp dims[3] = {(npy_intp)(img->get_height() ), (npy_intp)(img->get_width() ), 3};
     PyObject* temp = PyArray_SimpleNewFromData(3, dims, NPY_UINT8, data);
 
     PyArray_ENABLEFLAGS((PyArrayObject*) temp, NPY_ARRAY_OWNDATA);
@@ -84,7 +84,7 @@ static PyObject* NvJpeg_encode(NvJpeg* Self, PyObject* Argvs)
     PyArrayObject *vecin;
     unsigned int quality = 70;
     if (!PyArg_ParseTuple(Argvs, "O!|I", &PyArray_Type, &vecin, &quality)){
-        PyErr_SetString(PyExc_ValueError, "Parse the argument FAILED! You should pass BGR image numpy array!");
+        PyErr_SetString(PyExc_ValueError, "NvJpeg_encode: expected ndarray, int");
         return NULL;
     }
 
@@ -94,7 +94,7 @@ static PyObject* NvJpeg_encode(NvJpeg* Self, PyObject* Argvs)
     }
 
     if (PyArray_NDIM(vecin) != 3){
-        PyErr_SetString(PyExc_ValueError, "Parse the argument FAILED! You should pass BGR image numpy array by height*width*channel!");
+        PyErr_SetString(PyExc_ValueError, "NvJpeg_encode: expected 3d ndarray of HxWx3");
         return NULL;
     }
 
@@ -111,106 +111,16 @@ static PyObject* NvJpeg_encode(NvJpeg* Self, PyObject* Argvs)
     auto data = m_handle->encode(img, quality);
 
     PyObject* rtn = PyBytes_FromStringAndSize((const char*)data->data, data->size);
-    delete(data);
-    delete(img);
 
+    // npy_intp dims[1] = {data->size};
+    // PyObject* temp = PyArray_SimpleNewFromData(1, dims, NPY_UINT8, data);
+
+    // PyArray_ENABLEFLAGS((PyArrayObject*) temp, NPY_ARRAY_OWNDATA);
+
+    delete data;
+    delete img;
+    
     return rtn;
-}
-
-static PyObject* NvJpeg_read(NvJpeg* Self, PyObject* Argvs)
-{
-    JpegCoder* m_handle = (JpegCoder*)Self->m_handle;
-    
-    unsigned char* jpegFile;
-    if(!PyArg_ParseTuple(Argvs, "s", &jpegFile)){
-        PyErr_SetString(PyExc_ValueError, "Parse the argument FAILED! You should pass jpeg file path string!");
-        return NULL;
-    }
-    #ifdef _MSC_VER
-    FILE* fp;
-    fopen_s(&fp, (const char*)jpegFile, "rb");
-    #else
-    FILE* fp = fopen((const char*)jpegFile, "rb");
-    #endif
-
-    if (fp == NULL){
-        PyErr_Format(PyExc_IOError, "Cannot open file \"%s\"", jpegFile);
-        return NULL;
-    }
-    fseek(fp, 0, SEEK_END);
-    size_t dataLength = ftell(fp);
-    unsigned char* jpegData = (unsigned char*)malloc(dataLength);
-    if(jpegData == NULL){
-        fclose(fp);
-        PyErr_Format(PyExc_IOError, "Out of memeroy when read file \"%s\"", jpegFile);
-        return NULL;
-    }
-
-    fseek(fp, 0, SEEK_SET);
-    if(fread(jpegData, 1, dataLength, fp) != dataLength){
-        fclose(fp);
-        free(jpegData);
-        PyErr_Format(PyExc_IOError, "Read file \"%s\" with error", jpegFile);
-        return NULL;
-    }
-
-    fclose(fp);
-
-    m_handle->ensureThread(PyThread_get_thread_ident());
-    auto img = m_handle->decode((const unsigned char*)jpegData, dataLength);
-
-    free(jpegData);
-
-    unsigned char* data = img->buffer();
-
-    npy_intp dims[3] = {(npy_intp)(img->height), (npy_intp)(img->width), 3};
-    PyObject* temp = PyArray_SimpleNewFromData(3, dims, NPY_UINT8, data);
-
-    PyArray_ENABLEFLAGS((PyArrayObject*) temp, NPY_ARRAY_OWNDATA);
-    delete(img);
-    return temp;
-}
-
-static PyObject* NvJpeg_write(NvJpeg* Self, PyObject* Argvs)
-{
-    unsigned char* jpegFile;
-    PyArrayObject *vecin;
-    unsigned int quality = 70;
-    if (!PyArg_ParseTuple(Argvs, "sO!|I", &jpegFile, &PyArray_Type, &vecin, &quality)){
-        PyErr_SetString(PyExc_ValueError, "Parse the argument FAILED! You should pass BGR image numpy array!");
-        return NULL;
-    }
-
-    #ifdef _MSC_VER
-    FILE* fp;
-    fopen_s(&fp, (const char*)jpegFile, "wb");
-    #else
-    FILE* fp = fopen((const char*)jpegFile, "wb");
-    #endif
-    
-    if(fp == NULL){
-        PyErr_Format(PyExc_IOError, "Cannot open file \"%s\"", jpegFile);
-        return NULL;
-    }
-    
-    PyObject* passAvgs = PyTuple_GetSlice(Argvs, 1, 2);
-    PyObject* encodeResponse = NvJpeg_encode(Self, passAvgs);
-    Py_DECREF(passAvgs);
-    if(encodeResponse == NULL){
-        fclose(fp);
-        return NULL;
-    }
-
-    char* jpegData;
-    Py_ssize_t jpegDataSize;
-    PyBytes_AsStringAndSize(encodeResponse, &jpegData, &jpegDataSize);
-    ssize_t write_size = fwrite(jpegData, 1, jpegDataSize, fp);
-    if(write_size != jpegDataSize){
-        PyErr_Format(PyExc_IOError, "Write file \"%s\" with error", jpegFile);
-    }
-    Py_DECREF(encodeResponse);
-    fclose(fp);
-    return Py_BuildValue("l", (long)jpegDataSize);
 }
 
 
@@ -218,8 +128,6 @@ static PyMethodDef NvJpeg_MethodMembers[] =
 {
         {"encode",  (PyCFunction)NvJpeg_encode,  METH_VARARGS,  "encode jpge"},
         {"decode", (PyCFunction)NvJpeg_decode, METH_VARARGS,  "decode jpeg"},
-        {"read", (PyCFunction)NvJpeg_read, METH_VARARGS,  "read jpeg file and decode"},
-        {"write", (PyCFunction)NvJpeg_write, METH_VARARGS,  "encode and write jpeg file"},
         {NULL, NULL, 0, NULL}
 };
 

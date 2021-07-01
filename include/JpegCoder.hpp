@@ -42,16 +42,17 @@ typedef enum{
 
 class JpegCoderImage {
 public:
-    void* img;
-    JpegCoderChromaSubsampling subsampling;
-    size_t height;
-    size_t width;
-    short nChannel;
-    
+
     virtual ~JpegCoderImage() {}
     
     virtual void fill(const unsigned char* data) = 0;
     virtual unsigned char* buffer() = 0;
+
+    virtual size_t get_width() = 0;
+    virtual size_t get_height() = 0;
+
+    virtual size_t get_nChannels() = 0;
+
 };
 
 
