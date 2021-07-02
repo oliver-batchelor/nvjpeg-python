@@ -24,5 +24,7 @@ if __name__=='__main__':
   # cv2.imshow("image", decoded)
   # cv2.waitKey()
 
+  # print(np.array(data).sum())
+
   with open(path.join("out", path.basename(args.filename)), "wb") as f:
-    f.write(data.tobytes())
+    f.write(data)

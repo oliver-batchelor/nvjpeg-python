@@ -108,18 +108,9 @@ static PyObject* NvJpeg_encode(NvJpeg* Self, PyObject* Argvs)
     img->fill(buffer);
     
     m_handle->ensureThread(PyThread_get_thread_ident());
-    auto data = m_handle->encode(img, quality);
+    auto jpegData = m_handle->encode(img, quality);
 
-    PyObject* rtn = PyBytes_FromStringAndSize((const char*)data->data, data->size);
-
-    // npy_intp dims[1] = {data->size};
-    // PyObject* temp = PyArray_SimpleNewFromData(1, dims, NPY_UINT8, data);
-
-    // PyArray_ENABLEFLAGS((PyArrayObject*) temp, NPY_ARRAY_OWNDATA);
-
-    delete data;
-    delete img;
-    
+    PyObject* rtn = PyBytes_FromStringAndSize((char*)&jpegData.front(), jpegData.size()); 
     return rtn;
 }
 

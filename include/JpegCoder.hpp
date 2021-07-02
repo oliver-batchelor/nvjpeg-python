@@ -5,6 +5,7 @@
 #include <memory.h>
 #include <iostream>
 #include <exception>
+#include <vector>
 
 class JpegCoderError: public std::runtime_error{
 protected:
@@ -57,26 +58,6 @@ public:
 
 
 
-class JpegCoderBytes{
-public:
-    size_t size;
-    unsigned char* data;
-    JpegCoderBytes(size_t size){
-        this->data = (unsigned char*)malloc(size);
-        this->size = size;
-    }
-
-    JpegCoderBytes(unsigned char* data, size_t size){
-        this->data = data;
-        this->size = size;
-    }
-
-    ~JpegCoderBytes(){
-        if(this->data!=nullptr){
-            free(this->data);
-        }
-    }
-};
 
 class JpegCoder{
 public:
@@ -87,7 +68,7 @@ public:
 
     virtual void ensureThread(long threadIdent) = 0;
     virtual JpegCoderImage* decode(const unsigned char* jpegData, size_t length) = 0;
-    virtual JpegCoderBytes* encode(JpegCoderImage* img, int quality) = 0;
+    virtual std::vector<unsigned char> encode(JpegCoderImage* img, int quality) = 0;
 
     virtual JpegCoderImage *createImage(size_t width, size_t height, short nChannel, JpegCoderChromaSubsampling subsampling) = 0;
 

@@ -44,7 +44,7 @@ class JpegCoderX86 : public JpegCoder {
   
   void ensureThread(long threadIdent);
   JpegCoderImage* decode(const unsigned char* jpegData, size_t length);
-  JpegCoderBytes* encode(JpegCoderImage* img, int quality);
+  std::vector<unsigned char> encode(JpegCoderImage* img, int quality);
 
   JpegCoderImageX86 *createImage(size_t width, size_t height, short nChannel, JpegCoderChromaSubsampling subsampling);
 
@@ -160,7 +160,7 @@ JpegCoderImageX86 *JpegCoderX86::createImage(size_t width, size_t height, short 
 
 
 
-JpegCoderBytes* JpegCoderX86::encode(JpegCoderImage* _img, int quality){
+std::vector<unsigned char> JpegCoderX86::encode(JpegCoderImage* _img, int quality){
     JpegCoderImageX86 *img = (JpegCoderImageX86*)_img;
 
     nvjpegHandle_t nv_handle = context.nv_handle;
@@ -185,8 +185,8 @@ JpegCoderBytes* JpegCoderX86::encode(JpegCoderImage* _img, int quality){
     size_t length;
     nvjpegEncodeRetrieveBitstream(nv_handle, nv_enc_state, NULL, &length, stream);
     
-    JpegCoderBytes* jpegData = new JpegCoderBytes(length);
-    nvjpegEncodeRetrieveBitstream(nv_handle, nv_enc_state, jpegData->data, &(jpegData->size), stream);
+    std::vector<unsigned char> jpegData(length);
+    nvjpegEncodeRetrieveBitstream(nv_handle, nv_enc_state, &jpegData.front(), &length, stream);
 
     cudaStreamSynchronize(context.stream);
 
