@@ -46,8 +46,8 @@ public:
 
     virtual ~JpegCoderImage() {}
     
-    virtual void fill(const unsigned char* data) = 0;
-    virtual unsigned char* buffer() = 0;
+    virtual void fill(const void* data) = 0;
+    virtual void* buffer() = 0;
 
     virtual size_t get_width() = 0;
     virtual size_t get_height() = 0;
@@ -67,7 +67,7 @@ public:
     static JpegCoder *create();
 
     virtual void ensureThread(long threadIdent) = 0;
-    virtual JpegCoderImage* decode(const unsigned char* jpegData, size_t length) = 0;
+    virtual JpegCoderImage* decode(const void* jpegData, size_t length) = 0;
     virtual std::vector<unsigned char> encode(JpegCoderImage* img, int quality) = 0;
 
     virtual JpegCoderImage *createImage(size_t width, size_t height, short nChannel, JpegCoderChromaSubsampling subsampling) = 0;

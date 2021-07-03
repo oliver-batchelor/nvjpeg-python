@@ -50,18 +50,18 @@ static PyObject* NvJpeg_decode(NvJpeg* Self, PyObject* Argvs)
     JpegCoder* m_handle = (JpegCoder*)Self->m_handle;
     
     Py_buffer pyBuf;
-    unsigned char* jpegData;
+    void* jpegData;
     int len;
     if(!PyArg_ParseTuple(Argvs, "y*", &pyBuf)){
         PyErr_SetString(PyExc_ValueError, "Parse the argument FAILED! You should jpegData byte string!");
         return NULL;
     }
-    jpegData = (unsigned char*)pyBuf.buf;
+    jpegData = (void*)pyBuf.buf;
     len = pyBuf.len;
     JpegCoderImage* img;
     try{
         m_handle->ensureThread(PyThread_get_thread_ident());
-        img = m_handle->decode((const unsigned char*)jpegData, len);
+        img = m_handle->decode(jpegData, len);
         PyBuffer_Release(&pyBuf);
     }catch(JpegCoderError& e){
         PyBuffer_Release(&pyBuf);
@@ -69,7 +69,7 @@ static PyObject* NvJpeg_decode(NvJpeg* Self, PyObject* Argvs)
         return NULL;
     }
 
-    unsigned char* data = img->buffer();
+    void* data = img->buffer();
 
     npy_intp dims[3] = {(npy_intp)(img->get_height() ), (npy_intp)(img->get_width() ), 3};
     PyObject* temp = PyArray_SimpleNewFromData(3, dims, NPY_UINT8, data);
@@ -103,7 +103,7 @@ static PyObject* NvJpeg_encode(NvJpeg* Self, PyObject* Argvs)
     }
     JpegCoder* m_handle = (JpegCoder*)Self->m_handle;
 
-    const unsigned char *buffer = (const unsigned char*)PyArray_DATA(vecin);
+    const void *buffer = (const void*)PyArray_DATA(vecin);
     auto img = m_handle->createImage(PyArray_DIM(vecin, 1), PyArray_DIM(vecin, 0), 3, JPEGCODER_CSS_444);
     img->fill(buffer);
     

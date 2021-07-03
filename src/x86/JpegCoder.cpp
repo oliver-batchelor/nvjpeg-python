@@ -24,15 +24,15 @@ class JpegCoderImageX86 : public JpegCoderImage {
   size_t get_nChannels() { return nChannel; }
 
   
-  void fill(const unsigned char* data);
-  unsigned char* buffer();
+  void fill(const void* data);
+  void* buffer();
 
   nvjpegImage_t *img;
+
   JpegCoderChromaSubsampling subsampling;
   size_t height;
   size_t width;
   short nChannel;
-
 
   cudaStream_t stream;
 };
@@ -43,7 +43,7 @@ class JpegCoderX86 : public JpegCoder {
   ~JpegCoderX86();
   
   void ensureThread(long threadIdent);
-  JpegCoderImage* decode(const unsigned char* jpegData, size_t length);
+  JpegCoderImage* decode(const void* jpegData, size_t length);
   std::vector<unsigned char> encode(JpegCoderImage* img, int quality);
 
   JpegCoderImageX86 *createImage(size_t width, size_t height, short nChannel, JpegCoderChromaSubsampling subsampling);
@@ -54,41 +54,35 @@ class JpegCoderX86 : public JpegCoder {
 };
 
 
-
-
 JpegCoder *JpegCoder::create() {
   return new JpegCoderX86();
 }
 
 
-JpegCoderImageX86::JpegCoderImageX86(size_t width, size_t height, short nChannel, JpegCoderChromaSubsampling subsampling, cudaStream_t stream){
-    unsigned char * pBuffer = nullptr;
+JpegCoderImageX86::JpegCoderImageX86(size_t width, size_t height, short nChannel, 
+  JpegCoderChromaSubsampling subsampling, cudaStream_t stream) 
+  : width(width), height(height), nChannel(nChannel), subsampling(subsampling), 
+    img(nullptr), stream(stream) 
+  {
+    void * deviceBuffer = nullptr;
 
-    cudaError_t eCopy = cudaMallocAsync((void **)&pBuffer, width * height * NVJPEG_MAX_COMPONENT, stream);
-
+    cudaError_t eCopy = cudaMallocAsync(&deviceBuffer, width * height * NVJPEG_MAX_COMPONENT, stream);
     if (cudaSuccess != eCopy){
         throw JpegCoderError(eCopy, cudaGetErrorString(eCopy));
     }
 
-    nvjpegImage_t *img = new nvjpegImage_t();
-    for(int i = 0;i<NVJPEG_MAX_COMPONENT;i++){
-        img->channel[i] = pBuffer + (width*height*i);
-        img->pitch[i] = (unsigned int)width;
+    img = new nvjpegImage_t();
+    for(int i = 0; i < NVJPEG_MAX_COMPONENT; i++){
+        img->channel[i] = nullptr;
+        img->pitch[i] = 0;
     }
 
     img->pitch[0] = (unsigned int)width*3;
-
-    this->img = img;
-    this->height = height;
-    this->width = width;
-    this->nChannel = nChannel;
-    this->subsampling = subsampling;
-
-    this->stream = stream;
+    img->channel[0] = (unsigned char*)deviceBuffer;
 }
 
 
-void JpegCoderImageX86::fill(const unsigned char* data){
+void JpegCoderImageX86::fill(const void* data){
   cudaError_t eCopy = cudaMemcpyAsync(img->channel[0],  
     data, width * height * 3, cudaMemcpyHostToDevice, this->stream);
   
@@ -99,17 +93,18 @@ void JpegCoderImageX86::fill(const unsigned char* data){
   this->subsampling = JPEGCODER_CSS_444;
 }
 
-unsigned char* JpegCoderImageX86::buffer(){
+void* JpegCoderImageX86::buffer(){
     nvjpegImage_t* img = this->img;
     size_t size = height*width*3;
-    unsigned char* buffer = (unsigned char*)malloc(size);
+    void* buffer = malloc(size);
     cudaMemcpy(buffer, img->channel[0], size, cudaMemcpyDeviceToHost);
     return buffer;
 }
 
 JpegCoderImageX86::~JpegCoderImageX86(){
-    cudaFreeAsync(img->channel[0], this->stream);
-    delete this->img;
+    cudaFreeAsync(img->channel[0], stream);
+    
+    delete img;
 }
 
 JpegCoderX86::JpegCoderX86() : JpegCoder(){
@@ -131,7 +126,7 @@ void JpegCoderX86::ensureThread(long threadIdent){
     ;
 }
 
-JpegCoderImage* JpegCoderX86::decode(const unsigned char* jpegData, size_t length){
+JpegCoderImage* JpegCoderX86::decode(const void* jpegData, size_t length){
     nvjpegHandle_t nv_handle = context.nv_handle;
     nvjpegJpegState_t nv_statue = context.nv_statue;
 
@@ -141,10 +136,10 @@ JpegCoderImage* JpegCoderX86::decode(const unsigned char* jpegData, size_t lengt
     int heights[NVJPEG_MAX_COMPONENT];
     int nComponent = 0;
     nvjpegChromaSubsampling_t subsampling;
-    nvjpegGetImageInfo(nv_handle, jpegData, length, &nComponent, &subsampling, widths, heights);
+    nvjpegGetImageInfo(nv_handle, (const unsigned char*)jpegData, length, &nComponent, &subsampling, widths, heights);
 
     JpegCoderImageX86* imgdesc = this->createImage(widths[0], heights[0], nComponent, ChromaSubsampling_Covert_NvJpegToJpegCoder(subsampling));
-    int nReturnCode = nvjpegDecode(nv_handle, nv_statue, jpegData, length, NVJPEG_OUTPUT_BGRI, (nvjpegImage_t *)(imgdesc->img), stream);
+    int nReturnCode = nvjpegDecode(nv_handle, nv_statue, (const unsigned char*)jpegData, length, NVJPEG_OUTPUT_BGRI, (nvjpegImage_t *)(imgdesc->img), stream);
 
     if (NVJPEG_STATUS_SUCCESS != nReturnCode){
         throw JpegCoderError(nReturnCode, "NvJpeg Decoder Error");
