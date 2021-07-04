@@ -4,12 +4,12 @@ from nvjpeg import NvJpeg
 import cv2
 import time
 
-
-from multiprocessing import Process
-import multiprocessing
+from functools import partial
 
 from threading import Thread
 from queue import Queue
+
+import gc
 
 import argparse
 
@@ -36,7 +36,7 @@ class Threaded(object):
     self.threads = [Thread(target=self.encode_thread, args=()) 
         for _ in range(size)]
 
-    self.jpeg = create_jpeg()
+    self.create_jpeg = create_jpeg
 
     
     for t in self.threads:
@@ -44,15 +44,17 @@ class Threaded(object):
 
 
   def encode_thread(self):
-
+    jpeg = self.create_jpeg()
     item = self.queue.get()
     while item is not None:
-        result = self.jpeg.encode(item)
-        item = self.queue.get()
+      image, quality = item
+
+      result = jpeg.encode(image, quality)
+      item = self.queue.get()
 
 
-  def encode(self, image):
-    self.queue.put(image)
+  def encode(self, image, quality=90):
+    self.queue.put((image, quality))
 
 
   def stop(self):
@@ -94,15 +96,9 @@ def main(args):
   images = [image] * args.n
   num_threads = args.j
 
-  if num_threads > 1:
-    # print(f'turbojpeg threaded j={num_threads}: {bench_threaded(TurboJPEG, images, num_threads):>5.1f} images/s')
-    print(f'nvjpeg threaded j={num_threads}: {bench_threaded(NvJpeg, images, num_threads):>5.1f} images/s')
-  # print(f'opencv threaded j={num_threads}: {bench_threaded(CvJpeg, images, num_threads):>5.1f} images/s')
-  
-  else:
-    # print(f'turbojpeg: {bench_encoder(TurboJPEG, images):>5.1f} images/s')
-    print(f'nvjpeg: {bench_encoder(NvJpeg, images):>5.1f} images/s')
-    # print(f'opencv: {bench_encoder(CvJpeg, images):>5.1f} images/s')
+
+  print(f'turbojpeg threaded j={num_threads}: {bench_threaded(TurboJPEG, images, num_threads):>5.1f} images/s')
+  print(f'nvjpeg: {bench_threaded(NvJpeg, images, 1):>5.1f} images/s')
 
 
 
@@ -110,8 +106,13 @@ if __name__=='__main__':
   parser = argparse.ArgumentParser(description='Jpeg encoding benchmark.')
   parser.add_argument('filename', type=str, help='filename of image to use')
 
-  parser.add_argument('--j', default=1, type=int, help='run multi-threaded')
-  parser.add_argument('--n', default=100, type=int, help='number of images to encode')
+  parser.add_argument('-j', default=6, type=int, help='run multi-threaded')
+  parser.add_argument('-n', default=100, type=int, help='number of images to encode')
 
   args = parser.parse_args()
   main(args)
+  gc.collect()
+
+  # main(args)
+  
+

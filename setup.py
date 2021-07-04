@@ -11,6 +11,8 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 from distutils.core import setup, Extension
 
+extra_compile_args=["-std=c++14"]
+
 if platform.system() == 'Linux':
     if os.path.exists('/usr/src/jetson_multimedia_api'):
         # Jetson
@@ -34,6 +36,7 @@ if platform.system() == 'Linux':
             ['nvjpeg-python.cpp', 'src/x86/JpegCoder.cpp'], 
             ['include', numpy.get_include()], 
             [('JPEGCODER_ARCH', 'x86')],
+            extra_compile_args=extra_compile_args,
         )
 elif platform.system() == 'Windows':
     cuda_include = '%s\\include' % (os.environ['CUDA_PATH'],)
