@@ -35,7 +35,7 @@ class Buffer {
     }
 
     void operator = (Buffer && buffer) {
-      if (nullptr == data) free(data);
+      if (nullptr != data) free(data);
 
       data = buffer.data;
       size = buffer.size;
@@ -43,7 +43,7 @@ class Buffer {
 
 
     ~Buffer() {
-      if (nullptr == data) free(data);
+      if (nullptr != data) free(data);
     }
 
     uint8_t *release() {
